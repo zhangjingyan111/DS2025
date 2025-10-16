@@ -1,1 +1,393 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <cstring>
+#include <cctype>
 
+using namespace std;
+
+class Complex {
+private:
+    double real;
+    double imag;
+public:
+    Complex(double r = 0, double i = 0) : real(r), imag(i) {}
+    double getReal() const { return real; }
+    double getImag() const { return imag; }
+    double modulus() const { return sqrt(real * real + imag * imag); }
+    bool operator==(const Complex& other) const {
+        return fabs(real - other.real) < 1e-9 && fabs(imag - other.imag) < 1e-9;
+    }
+    friend ostream& operator<<(ostream& os, const Complex& c) {
+        os << "(" << c.real << ", " << c.imag << ")";
+        return os;
+    }
+};
+
+bool compareComplex(const Complex& a, const Complex& b) {
+    double modA = a.modulus(), modB = b.modulus();
+    return (fabs(modA - modB) > 1e-9) ? (modA < modB) : (a.getReal() < b.getReal());
+}
+
+vector<Complex> generateRandomComplexVector(int size, double minVal, double maxVal) {
+    vector<Complex> vec;
+    for (int i = 0; i < size; ++i) {
+        double real = minVal + (maxVal - minVal) * rand() / (RAND_MAX + 1.0);
+        double imag = minVal + (maxVal - minVal) * rand() / (RAND_MAX + 1.0);
+        vec.push_back(Complex(real, imag));
+    }
+    return vec;
+}
+
+void shuffleVector(vector<Complex>& vec) {
+    for (int i = vec.size() - 1; i > 0; --i) {
+        int j = rand() % (i + 1);
+        swap(vec[i], vec[j]);
+    }
+}
+
+int findComplex(const vector<Complex>& vec, const Complex& c) {
+    for (int i = 0; i < (int)vec.size(); ++i)
+        if (vec[i] == c) return i;
+    return -1;
+}
+
+void insertComplex(vector<Complex>& vec, int index, const Complex& c) {
+    if (index >= 0 && index <= (int)vec.size())
+        vec.insert(vec.begin() + index, c);
+}
+
+bool deleteComplex(vector<Complex>& vec, const Complex& c) {
+    vector<Complex>::iterator it;
+    for (it = vec.begin(); it != vec.end(); ++it)
+        if (*it == c) { vec.erase(it); return true; }
+    return false;
+}
+
+void uniqueVector(vector<Complex>& vec) {
+    if (vec.empty()) return;
+    sort(vec.begin(), vec.end(), compareComplex);
+    vector<Complex> temp;
+    temp.push_back(vec[0]);
+    for (int i = 1; i < (int)vec.size(); ++i)
+        if (!(vec[i] == vec[i-1])) temp.push_back(vec[i]);
+    vec = temp;
+}
+
+void bubbleSort(vector<Complex>& vec) {
+    int n = vec.size();
+    for (int i = 0; i < n - 1; ++i) {
+        bool swapped = false;
+        for (int j = 0; j < n - i - 1; ++j) {
+            if (compareComplex(vec[j+1], vec[j])) {
+                swap(vec[j], vec[j+1]);
+                swapped = true;
+            }
+        }
+        if (!swapped) break;
+    }
+}
+
+void merge(vector<Complex>& vec, int left, int mid, int right) {
+    int n1 = mid - left + 1, n2 = right - mid;
+    vector<Complex> L(n1), R(n2);
+    for (int i = 0; i < n1; ++i) L[i] = vec[left + i];
+    for (int j = 0; j < n2; ++j) R[j] = vec[mid + 1 + j];
+    int i = 0, j = 0, k = left;
+    while (i < n1 && j < n2) {
+        if (compareComplex(L[i], R[j])) vec[k++] = L[i++];
+        else vec[k++] = R[j++];
+    }
+    while (i < n1) vec[k++] = L[i++];
+    while (j < n2) vec[k++] = R[j++];
+}
+
+void mergeSort(vector<Complex>& vec, int left, int right) {
+    if (left < right) {
+        int mid = left + (right - left) / 2;
+        mergeSort(vec, left, mid);
+        mergeSort(vec, mid + 1, right);
+        merge(vec, left, mid, right);
+    }
+}
+
+vector<Complex> rangeSearch(const vector<Complex>& vec, double m1, double m2) {
+    vector<Complex> result;
+    for (int i = 0; i < (int)vec.size(); ++i) {
+        double mod = vec[i].modulus();
+        if (mod >= m1 - 1e-9 && mod < m2 - 1e-9) result.push_back(vec[i]);
+        else if (mod >= m2) break;
+    }
+    return result;
+}
+
+void printVector(const vector<Complex>& vec, const char* msg = "") {
+    if (msg[0] != '\0') cout << msg << endl;
+    int printSize = min(10, (int)vec.size());
+    for (int i = 0; i < printSize; ++i) cout << vec[i] << " ";
+    if ((int)vec.size() > printSize) cout << "...";
+    cout << endl << "向量大小: " << vec.size() << endl << endl;
+}
+// -------------------------- 复数类代码结束 --------------------------
+
+
+// -------------------------- 栈数据结构（用于计算器） --------------------------
+template <typename T>
+class Stack {
+private:
+    vector<T> data;
+public:
+    void push(const T& val) { data.push_back(val); }
+    bool pop() { if (isEmpty()) return false; data.pop_back(); return true; }
+    T top() const { if (!isEmpty()) return data.back(); throw "Stack is empty"; }
+    bool isEmpty() const { return data.empty(); }
+    void clear() { data.clear(); }
+    int size() const { return data.size(); }
+};
+
+
+// -------------------------- 字符串计算器 --------------------------
+class Calculator {
+private:
+    int priority(const char op) const {
+        switch (op) {
+            case ' ': return 0;
+            case '+': case '-': return 1;
+            case '*': case '/': return 2;
+            case '~': return 3;
+            case '(': case ')': return 4;
+            default: return -1;
+        }
+    }
+    bool isFunction(const string& s) const {
+        return s == "sin" || s == "cos" || s == "tan" || s == "log" || s == "ln";
+    }
+    double calculateFunction(const string& func, double x) const {
+        if (func == "sin") return sin(x);
+        if (func == "cos") return cos(x);
+        if (func == "tan") return tan(x);
+        if (func == "log") return log10(x);
+        if (func == "ln") return log(x);
+        return 0;
+    }
+    double calculate(double a, double b, char op) const {
+        switch (op) {
+            case '+': return a + b;
+            case '-': return a - b;
+            case '*': return a * b;
+            case '/': 
+                if (fabs(b) < 1e-9) throw "Division by zero";
+                return a / b;
+            default: return 0;
+        }
+    }
+public:
+    double evaluate(const string& expr) {
+        Stack<double> numStack;
+        Stack<char> opStack;
+        string currentNum;
+        string currentFunc;
+
+        for (int i = 0; i < (int)expr.size(); ++i) {
+            char c = expr[i];
+            if (c == ' ') continue;
+            if (isdigit(c) || c == '.') {
+                currentNum += c;
+                continue;
+            }
+            if (isalpha(c)) {
+                currentFunc += c;
+                continue;
+            }
+            if (!currentNum.empty()) {
+                numStack.push(atof(currentNum.c_str()));
+                currentNum.clear();
+            }
+            if (c == '(' && !currentFunc.empty()) {
+                if (!isFunction(currentFunc)) throw "Invalid function";
+                opStack.push('#');
+                opStack.push('(');
+                currentFunc.clear();
+                continue;
+            }
+            if (c == '(') {
+                opStack.push(c);
+                if (i + 1 < (int)expr.size() && expr[i+1] == '-') {
+                    i++;
+                    opStack.push('~');
+                }
+            } else if (c == ')') {
+                while (!opStack.isEmpty() && opStack.top() != '(') {
+                    char op = opStack.top();
+                    opStack.pop();
+                    if (op == '~') {
+                        double num = numStack.top(); numStack.pop();
+                        numStack.push(-num);
+                    } else if (op == '#') {
+                        double num = numStack.top(); numStack.pop();
+                        if (currentFunc.empty()) throw "Missing function name";
+                        numStack.push(calculateFunction(currentFunc, num));
+                        currentFunc.clear();
+                    } else {
+                        if (numStack.size() < 2) throw "Invalid expression";
+                        double b = numStack.top(); numStack.pop();
+                        double a = numStack.top(); numStack.pop();
+                        numStack.push(calculate(a, b, op));
+                    }
+                }
+                if (opStack.isEmpty() || opStack.top() != '(') throw "Mismatched parentheses";
+                opStack.pop();
+            } else {
+                if (c == '-' && (i == 0 || expr[i-1] == '(' || priority(expr[i-1]) > 0)) {
+                    c = '~';
+                }
+                while (!opStack.isEmpty() && opStack.top() != '(' && priority(opStack.top()) >= priority(c)) {
+                    char op = opStack.top();
+                    opStack.pop();
+                    if (op == '~') {
+                        double num = numStack.top(); numStack.pop();
+                        numStack.push(-num);
+                    } else {
+                        if (numStack.size() < 2) throw "Invalid expression";
+                        double b = numStack.top(); numStack.pop();
+                        double a = numStack.top(); numStack.pop();
+                        numStack.push(calculate(a, b, op));
+                    }
+                }
+                opStack.push(c);
+            }
+        }
+        if (!currentNum.empty()) {
+            numStack.push(atof(currentNum.c_str()));
+        }
+        while (!opStack.isEmpty()) {
+            char op = opStack.top();
+            opStack.pop();
+            if (op == '(' || op == ')') throw "Mismatched parentheses";
+            if (op == '~') {
+                double num = numStack.top(); numStack.pop();
+                numStack.push(-num);
+            } else {
+                if (numStack.size() < 2) throw "Invalid expression";
+                double b = numStack.top(); numStack.pop();
+                double a = numStack.top(); numStack.pop();
+                numStack.push(calculate(a, b, op));
+            }
+        }
+        if (numStack.size() != 1) throw "Invalid expression";
+        return numStack.top();
+    }
+};
+
+
+// -------------------------- 柱状图最大矩形面积功能 --------------------------
+class Histogram {
+public:
+    // （1）计算最大矩形面积的核心函数（单调栈算法，时间复杂度O(n)）
+    int largestRectangleArea(vector<int>& heights) {
+        if (heights.empty()) return 0;
+        
+        Stack<int> stk;  // 存储索引，维护高度递增的单调栈
+        int maxArea = 0;
+        int n = heights.size();
+        
+        for (int i = 0; i < n; ++i) {
+            // 当前高度小于栈顶索引对应的高度时，弹出栈顶并计算面积
+            while (!stk.isEmpty() && heights[i] < heights[stk.top()]) {
+                int h = heights[stk.top()];  // 以栈顶高度为矩形高度
+                stk.pop();
+                // 计算宽度：栈空则宽度为i，否则为i - 栈顶索引 - 1
+                int w = stk.isEmpty() ? i : (i - stk.top() - 1);
+                maxArea = max(maxArea, h * w);
+            }
+            stk.push(i);  // 当前索引入栈
+        }
+        
+        // 处理栈中剩余元素（右侧无更小元素，宽度为n）
+        while (!stk.isEmpty()) {
+            int h = heights[stk.top()];
+            stk.pop();
+            int w = stk.isEmpty() ? n : (n - stk.top() - 1);
+            maxArea = max(maxArea, h * w);
+        }
+        
+        return maxArea;
+    }
+    
+    // （2）生成随机测试数据（1 <= 长度 <= 1e5，0 <= 高度 <= 1e4）
+    vector<int> generateRandomHeights() {
+        // 随机长度：1到1e5之间
+        int len = rand() % 100000 + 1;  // 1 <= len <= 1e5
+        vector<int> heights;
+        for (int i = 0; i < len; ++i) {
+            // 随机高度：0到1e4之间
+            int h = rand() % 10001;  // 0 <= h <= 1e4
+            heights.push_back(h);
+        }
+        return heights;
+    }
+    
+    // 打印测试数据（过长时省略中间部分）
+    void printHeights(const vector<int>& heights, int caseNum) {
+        cout << "测试案例 " << caseNum << "：" << endl;
+        cout << "长度：" << heights.size() << "，前10个高度：";
+        int printLen = min(10, (int)heights.size());
+        for (int i = 0; i < printLen; ++i) {
+            cout << heights[i] << " ";
+        }
+        if ((int)heights.size() > printLen) cout << "...";
+        cout << endl;
+    }
+};
+
+
+// -------------------------- 主函数 --------------------------
+int main() {
+    srand((unsigned int)time(0));
+
+    // 原有功能测试（简化输出）
+    cout << "===== 复数向量功能测试（简化） =====" << endl;
+    vector<Complex> complexVec = generateRandomComplexVector(10, -10, 10);
+    printVector(complexVec, "随机复数向量:");
+
+    cout << "\n===== 字符串计算器测试（简化） =====" << endl;
+    Calculator calc;
+    vector<string> testCases;
+    testCases.push_back("3 + 4 * 2 / (1 - 5)");
+    testCases.push_back("sin(3.1415926/2)");
+    for (size_t i = 0; i < testCases.size(); ++i) {
+        cout << "表达式: " << testCases[i] << "，结果: ";
+        try { cout << calc.evaluate(testCases[i]) << endl; }
+        catch (const char* err) { cout << "错误: " << err << endl; }
+    }
+
+    // 新增：柱状图最大矩形面积测试
+    cout << "\n===== 柱状图最大矩形面积测试 =====" << endl;
+    Histogram hist;
+    int testCount = 10;  // 10组测试数据
+    // 手动验证示例
+    vector<int> example1;
+    example1.push_back(2); example1.push_back(1); example1.push_back(5);
+    example1.push_back(6); example1.push_back(2); example1.push_back(3);
+    cout << "\n示例1验证：" << endl;
+    cout << "输入: [2,1,5,6,2,3]，预期输出: 10，实际输出: " << hist.largestRectangleArea(example1) << endl;
+    
+    vector<int> example2;
+    example2.push_back(2); example2.push_back(4);
+    cout << "示例2验证：" << endl;
+    cout << "输入: [2,4]，预期输出: 4，实际输出: " << hist.largestRectangleArea(example2) << endl;
+
+    // 随机生成10组数据测试
+    cout << "\n----- 随机测试数据（10组） -----" << endl;
+    for (int i = 0; i < testCount; ++i) {
+        vector<int> heights = hist.generateRandomHeights();
+        hist.printHeights(heights, i + 1);
+        int area = hist.largestRectangleArea(heights);
+        cout << "最大矩形面积: " << area << endl << endl;
+    }
+
+    return 0;
+}
