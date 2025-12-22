@@ -1,0 +1,246 @@
+#include <iostream>
+#include <cstring>
+#include <queue>
+#include <fstream>
+using namespace std;
+
+// 定义秩类型
+typedef int Rank;
+
+// 位图类（按文档实现）
+class Bitmap {
+private:
+    unsigned char* M;
+protected:
+    Rank N, _sz; // N：字节数，_sz：有效位个数
+    void init(Rank n) {
+        M = new unsigned char[N = (n + 7) / 8];
+        memset(M, 0, N);
+        _sz = 0;
+    }
+    void expand(Rank k) {
+        if (k < 8 * N) return;
+        Rank oldN = N;
+        unsigned char* oldM = M;
+        init(2 * k); // 加倍扩容
+        memcpy(M, oldM, oldN); // 复制原数据（vs2019+需用memcpy_s，其他编译器用memcpy）
+        delete[] oldM;
+    }
+public:
+    Bitmap(Rank n = 8) { init(n); }
+    Bitmap(char* file, Rank n = 8) {
+        init(n);
+        FILE* fp = fopen(file, "r");
+        fread(M, sizeof(char), N, fp);
+        fclose(fp);
+        for (Rank k = 0, cnt = 0; k < n; k++)
+            cnt += test(k);
+        _sz = cnt;
+    }
+    ~Bitmap() { delete[] M; M = NULL; _sz = 0; }
+    Rank size() { return _sz; }
+    void set(Rank k) { expand(k); _sz++; M[k >> 3] |= (0x80 >> (k & 0x07)); }
+    void clear(Rank k) { expand(k); _sz--; M[k >> 3] &= ~(0x80 >> (k & 0x07)); }
+    bool test(Rank k) { expand(k); return M[k >> 3] & (0x80 >> (k & 0x07)); }
+    void dump(char* file) {
+        FILE* fp = fopen(file, "w");
+        fwrite(M, sizeof(char), N, fp);
+        fclose(fp);
+    }
+    char* bits2string(Rank n) {
+        expand(n - 1);
+        char* s = new char[n + 1];
+        s[n] = '\0';
+        for (Rank i = 0; i < n; i++)
+            s[i] = test(i) ? '1' : '0';
+        return s;
+    }
+};
+
+// 二叉树节点结构
+template <typename T>
+struct BinNode {
+    T data;
+    BinNode<T>* left;
+    BinNode<T>* right;
+    BinNode(T d = T(), BinNode<T>* l = NULL, BinNode<T>* r = NULL)
+        : data(d), left(l), right(r) {}
+};
+
+// 二叉树类（BinTree）
+template <typename T>
+class BinTree {
+protected:
+    BinNode<T>* root; // 根节点
+    Rank _size; // 节点数
+public:
+    BinTree() : root(NULL), _size(0) {}
+    ~BinTree() { destroy(root); }
+    Rank size() { return _size; }
+    BinNode<T>* getRoot() { return root; }
+    void setRoot(BinNode<T>* node) { root = node; }
+private:
+    void destroy(BinNode<T>* node) {
+        if (!node) return;
+        destroy(node->left);
+        destroy(node->right);
+        delete node;
+        _size--;
+    }
+};
+
+// Huffman树节点（继承二叉树节点，增加权重）
+struct HuffNode : public BinNode<pair<char, int>> {
+    int weight; // 权重（字符出现次数）
+    HuffNode(char c = '\0', int w = 0) 
+        : BinNode<pair<char, int>>(make_pair(c, w)), weight(w) {}
+    HuffNode(HuffNode* l, HuffNode* r) { // 合并两个节点
+        left = l;
+        right = r;
+        weight = l->weight + r->weight;
+        data = make_pair('\0', 0); // 非叶子节点无实际字符
+    }
+};
+
+// Huffman树类（继承二叉树）
+class HuffTree : public BinTree<pair<char, int>> {
+public:
+    // 构建Huffman树（输入字符频率数组）
+    HuffTree(int freq[26]) {
+        priority_queue<HuffNode*, vector<HuffNode*>, greaterWeight> pq;
+        // 初始化叶子节点
+        for (int i = 0; i < 26; i++) {
+            if (freq[i] > 0) {
+                pq.push(new HuffNode('a' + i, freq[i]));
+                _size++;
+            }
+        }
+        // 构建Huffman树
+        while (pq.size() > 1) {
+            HuffNode* l = pq.top(); pq.pop();
+            HuffNode* r = pq.top(); pq.pop();
+            pq.push(new HuffNode(l, r));
+            _size++;
+        }
+        root = pq.empty() ? NULL : pq.top();
+    }
+private:
+    // 优先级队列比较规则（权重小的优先）
+    struct greaterWeight {
+        bool operator()(HuffNode* a, HuffNode* b) {
+            return a->weight > b->weight;
+        }
+    };
+};
+
+// Huffman编码类（基于Bitmap）
+class HuffCode {
+private:
+    Bitmap bits; // 存储编码的位图
+    Rank len; // 编码长度
+public:
+    HuffCode() : len(0) {}
+    // 从位图和长度构造
+    HuffCode(Bitmap& bm, Rank l) : bits(bm), len(l) {}
+    // 转换为字符串
+    char* toString() {
+        return bits.bits2string(len);
+    }
+    // 追加一个比特（0/1）
+    void append(bool bit) {
+        if (bit) bits.set(len);
+        else bits.clear(len);
+        len++;
+    }
+};
+
+// Huffman编码工具类
+class HuffCoder {
+private:
+    HuffCode codeTable[26]; // 26个字母的编码表
+public:
+    // 构建编码表（递归遍历Huffman树）
+    void buildCodeTable(HuffNode* root) {
+        HuffCode code;
+        traverse(root, code);
+    }
+    // 编码单个单词
+    char* encodeWord(const char* word) {
+        static string res;
+        res.clear();
+        for (int i = 0; word[i] != '\0'; i++) {
+            char c = tolower(word[i]);
+            if (c < 'a' || c > 'z') continue;
+            char* codeStr = codeTable[c - 'a'].toString();
+            res += codeStr;
+            delete[] codeStr;
+        }
+        char* ret = new char[res.size() + 1];
+        strcpy(ret, res.c_str());
+        return ret;
+    }
+private:
+    void traverse(HuffNode* node, HuffCode code) {
+        if (!node) return;
+        // 叶子节点（存储字符编码）
+        if (!node->left && !node->right) {
+            codeTable[node->data.first - 'a'] = code;
+            return;
+        }
+        // 左子树：追加0
+        code.append(false);
+        traverse(node->left, code);
+        code.append(true); // 回溯
+        // 右子树：追加1
+        code.append(true);
+        traverse(node->right, code);
+        code.append(false); // 回溯
+    }
+};
+
+// 统计《I have a dream》原文中26个字母的频率
+void countFrequency(const char* text, int freq[26]) {
+    memset(freq, 0, 26 * sizeof(int));
+    for (int i = 0; text[i] != '\0'; i++) {
+        char c = tolower(text[i]);
+        if (c >= 'a' && c <= 'z') {
+            freq[c - 'a']++;
+        }
+    }
+}
+
+// 测试用原文（《I have a dream》核心片段）
+const char* dreamText = 
+"I have a dream that one day this nation will rise up and live out the true meaning of its creed "
+"We hold these truths to be self-evident that all men are created equal "
+"I have a dream that one day on the red hills of Georgia the sons of former slaves and the sons of former slave owners will be able to sit down together at the table of brotherhood "
+"I have a dream that one day even the state of Mississippi a state sweltering with the heat of injustice sweltering with the heat of oppression will be transformed into an oasis of freedom and justice "
+"I have a dream that my four little children will one day live in a nation where they will not be judged by the color of their skin but by the content of their character "
+"I have a dream today";
+
+int main() {
+    // 1. 统计字符频率
+    int freq[26];
+    countFrequency(dreamText, freq);
+    
+    // 2. 构建Huffman树
+    HuffTree huffTree(freq);
+    if (!huffTree.getRoot()) {
+        cout << "Huffman树构建失败！" << endl;
+        return 1;
+    }
+    
+    // 3. 构建编码表
+    HuffCoder coder;
+    coder.buildCodeTable((HuffNode*)huffTree.getRoot());
+    
+    // 4. 编码测试
+    const char* testWords[] = {"dream", "freedom", "justice", "equal", "character"};
+    for (auto word : testWords) {
+        char* code = coder.encodeWord(word);
+        cout << "单词 \"" << word << "\" 的Huffman编码：" << code << endl;
+        delete[] code;
+    }
+    
+    return 0;
+}
