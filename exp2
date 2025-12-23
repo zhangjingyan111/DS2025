@@ -1,307 +1,352 @@
 #include <iostream>
-#include <cstdio>
+#include <string>
+#include <vector>
+#include <queue>
+#include <map>
+#include <algorithm>
 #include <cstring>
-#include <cstdlib>
-#include <climits>
+#include <cctype>
 using namespace std;
 
-// 位图类（按题目要求实现）
+// 简化的位图类
 class Bitmap {
 private:
     unsigned char* M;
-    int N;  // 字节数
-    int _sz; // 有效位个数
-    void expand(int k) { // 扩容至能容纳第k位
-        if (k < 8 * N) return;
-        int oldN = N;
-        unsigned char* oldM = M;
-        N = (2 * k + 7) / 8; // 加倍策略扩容
-        M = new unsigned char[N];
-        memset(M, 0, N);
-        memcpy(M, oldM, oldN); // 复制原数据
-        delete[] oldM;
-    }
+    int capacity;  // 总容量（位）
+    int size;      // 当前大小（位）
+
 public:
-    Bitmap(int n = 8) { // 构造函数
-        N = (n + 7) / 8;
-        M = new unsigned char[N];
-        memset(M, 0, N);
-        _sz = 0;
-    }
-    ~Bitmap() { // 析构函数
-        delete[] M;
-        M = NULL;
-        _sz = 0;
-        N = 0;
-    }
-    int size() { return _sz; }
-    void set(int k) { // 设置第k位为1
-        expand(k);
-        if (!test(k)) { // 未设置过才计数
-            _sz++;
-            M[k >> 3] |= (0x80 >> (k & 0x07));
-        }
-    }
-    void clear(int k) { // 清除第k位为0
-        expand(k);
-        if (test(k)) { // 已设置过才计数
-            _sz--;
-            M[k >> 3] &= ~(0x80 >> (k & 0x07));
-        }
-    }
-    bool test(int k) { // 测试第k位是否为1
-        expand(k);
-        return M[k >> 3] & (0x80 >> (k & 0x07));
-    }
-    char* bits2string(int n) { // 转换前n位为字符串
-        expand(n - 1);
-        char* s = new char[n + 1];
-        s[n] = '\0';
-        for (int i = 0; i < n; i++) {
-            s[i] = test(i) ? '1' : '0';
-        }
-        return s;
-    }
-};
-
-// 二叉树节点结构
-template <typename T>
-struct BinNode {
-    T data;
-    BinNode* left;
-    BinNode* right;
-    BinNode(T d = T(), BinNode* l = NULL, BinNode* r = NULL) {
-        data = d;
-        left = l;
-        right = r;
-    }
-};
-
-// Huffman树节点（继承二叉树节点，增加权重和字符）
-struct HuffNode : public BinNode<int> {
-    char ch; // 对应的字符（仅叶子节点有效）
-    int weight; // 权重（出现次数）
-    HuffNode(char c = '\0', int w = 0, HuffNode* l = NULL, HuffNode* r = NULL) {
-        ch = c;
-        weight = w;
-        left = l;
-        right = r;
-    }
-};
-
-// 最小堆（用于构建Huffman树）
-class MinHeap {
-private:
-    HuffNode** heap;
-    int size;
-    int capacity;
-    void shiftUp(int i) { // 向上调整
-        while (i > 0 && heap[(i - 1) / 2]->weight > heap[i]->weight) {
-            swap(heap[i], heap[(i - 1) / 2]);
-            i = (i - 1) / 2;
-        }
-    }
-    void shiftDown(int i) { // 向下调整
-        int minIdx = i;
-        int left = 2 * i + 1;
-        int right = 2 * i + 2;
-        if (left < size && heap[left]->weight < heap[minIdx]->weight) minIdx = left;
-        if (right < size && heap[right]->weight < heap[minIdx]->weight) minIdx = right;
-        if (minIdx != i) {
-            swap(heap[i], heap[minIdx]);
-            shiftDown(minIdx);
-        }
-    }
-public:
-    MinHeap(int cap = 26) { // 初始容量26（26个字母）
-        capacity = cap;
+    Bitmap(int n = 64) {
+        capacity = n;
+        int bytes = (n + 7) / 8;
+        M = new unsigned char[bytes];
+        memset(M, 0, bytes);
         size = 0;
-        heap = new HuffNode*[capacity];
     }
-    ~MinHeap() {
-        for (int i = 0; i < size; i++) delete heap[i];
-        delete[] heap;
+    
+    ~Bitmap() {
+        delete[] M;
     }
-    bool isEmpty() { return size == 0; }
-    void insert(HuffNode* node) { // 插入节点
-        if (size >= capacity) { // 扩容
-            capacity *= 2;
-            HuffNode** newHeap = new HuffNode*[capacity];
-            memcpy(newHeap, heap, size * sizeof(HuffNode*));
-            delete[] heap;
-            heap = newHeap;
+    
+    void set(int k) {
+        if (k >= capacity) expand(k + 1);
+        int byteIndex = k / 8;
+        int bitIndex = k % 8;
+        M[byteIndex] |= (1 << (7 - bitIndex));
+        if (k >= size) size = k + 1;
+    }
+    
+    void clear(int k) {
+        if (k >= capacity) expand(k + 1);
+        int byteIndex = k / 8;
+        int bitIndex = k % 8;
+        M[byteIndex] &= ~(1 << (7 - bitIndex));
+    }
+    
+    bool test(int k) {
+        if (k >= capacity) return false;
+        int byteIndex = k / 8;
+        int bitIndex = k % 8;
+        return (M[byteIndex] & (1 << (7 - bitIndex))) != 0;
+    }
+    
+    void expand(int newCapacity) {
+        if (newCapacity <= capacity) return;
+        
+        int newBytes = (newCapacity + 7) / 8;
+        unsigned char* newM = new unsigned char[newBytes];
+        memset(newM, 0, newBytes);
+        
+        int oldBytes = (capacity + 7) / 8;
+        memcpy(newM, M, oldBytes);
+        
+        delete[] M;
+        M = newM;
+        capacity = newCapacity;
+    }
+    
+    string toString() {
+        string result;
+        for (int i = 0; i < size; i++) {
+            result += test(i) ? '1' : '0';
         }
-        heap[size++] = node;
-        shiftUp(size - 1);
+        return result;
     }
-    HuffNode* extractMin() { // 提取最小权重节点
-        if (isEmpty()) return NULL;
-        HuffNode* minNode = heap[0];
-        heap[0] = heap[--size];
-        shiftDown(0);
-        return minNode;
+    
+    int getSize() { 
+        return size; 
     }
 };
 
-// Huffman编码类（新增clear成员函数，修复报错）
+// Huffman编码串
 class HuffCode {
 private:
-    Bitmap code; // 存储编码的位图
-    int length; // 编码长度
+    Bitmap bits;
+
 public:
-    HuffCode() { length = 0; }
-    ~HuffCode() {}
-    void appendBit(bool bit) { // 追加一个比特
-        code.set(length);
-        if (!bit) code.clear(length);
-        length++;
-    }
-    char* toString() { // 转换为字符串
-        return code.bits2string(length);
-    }
-    int getLength() { return length; }
-    // 新增：清除第k位（用于回溯）
-    void clear(int k) {
-        if (k >= 0 && k < length) {
-            code.clear(k);
+    HuffCode() : bits(64) {}
+    
+    void append(bool bit) {
+        int currentSize = bits.getSize();
+        bits.set(currentSize);
+        if (!bit) {
+            bits.clear(currentSize);
         }
+    }
+    
+    string toString() {
+        return bits.toString();
+    }
+    
+    void clear() {
+        // 简化实现，创建新的Bitmap
+        bits = Bitmap(64);
+    }
+    
+    int size() {
+        return bits.getSize();
     }
 };
 
-// 全局变量：存储每个字符的Huffman编码
-HuffCode huffCodes[26];
+// 二叉树节点
+struct BinNode {
+    char data;
+    int weight;
+    BinNode* left;
+    BinNode* right;
+    
+    BinNode(char d, int w) : data(d), weight(w), left(NULL), right(NULL) {}
+};
 
-// 构建Huffman编码（递归遍历Huffman树）
-void buildHuffCodes(HuffNode* root, HuffCode currentCode) {
-    if (root == NULL) return;
-    // 叶子节点（对应单个字符）
-    if (root->left == NULL && root->right == NULL) {
-        int idx = root->ch - 'a';
-        huffCodes[idx] = currentCode;
-        return;
+// 用于优先队列的比较函数
+struct CompareNodes {
+    bool operator()(BinNode* a, BinNode* b) {
+        return a->weight > b->weight;
     }
-    // 左子树：追加0
-    currentCode.appendBit(false);
-    buildHuffCodes((HuffNode*)root->left, currentCode);
-    currentCode.clear(currentCode.getLength() - 1); // 回溯（现在有clear函数，无报错）
-    // 右子树：追加1
-    currentCode.appendBit(true);
-    buildHuffCodes((HuffNode*)root->right, currentCode);
-    currentCode.clear(currentCode.getLength() - 1); // 回溯
-}
+};
 
-// 构建Huffman树
-HuffNode* buildHuffTree(int freq[]) {
-    MinHeap heap;
-    // 插入所有有频率的字符节点
-    for (int i = 0; i < 26; i++) {
-        if (freq[i] > 0) {
-            HuffNode* node = new HuffNode('a' + i, freq[i]);
-            heap.insert(node);
+// Huffman树类
+class HuffmanTree {
+private:
+    BinNode* root;
+    map<char, string> codeTable;
+    
+    void deleteTree(BinNode* node) {
+        if (node) {
+            deleteTree(node->left);
+            deleteTree(node->right);
+            delete node;
         }
     }
-    // 构建Huffman树
-    while (heap.isEmpty() == false) {
-        HuffNode* left = heap.extractMin();
-        if (heap.isEmpty()) { // 只剩一个节点（树构建完成）
-            return left;
+    
+    void generateCodes(BinNode* node, string code) {
+        if (!node) return;
+        
+        if (!node->left && !node->right) {
+            codeTable[node->data] = code;
+            return;
         }
-        HuffNode* right = heap.extractMin();
-        // 创建父节点（权重为左右子节点之和，字符设为无效）
-        HuffNode* parent = new HuffNode('\0', left->weight + right->weight, left, right);
-        heap.insert(parent);
+        
+        generateCodes(node->left, code + "0");
+        generateCodes(node->right, code + "1");
     }
-    return NULL;
-}
+    
+public:
+    HuffmanTree() : root(NULL) {}
+    
+    ~HuffmanTree() {
+        deleteTree(root);
+    }
+    
+    void build(map<char, int> freqMap) {
+        // 使用优先队列
+        priority_queue<BinNode*, vector<BinNode*>, CompareNodes> pq;
+        
+        // 创建叶子节点
+        for (map<char, int>::iterator it = freqMap.begin(); it != freqMap.end(); ++it) {
+            if (it->second > 0) {
+                pq.push(new BinNode(it->first, it->second));
+            }
+        }
+        
+        // 构建Huffman树
+        while (pq.size() > 1) {
+            BinNode* left = pq.top(); 
+            pq.pop();
+            BinNode* right = pq.top(); 
+            pq.pop();
+            
+            BinNode* parent = new BinNode('\0', left->weight + right->weight);
+            parent->left = left;
+            parent->right = right;
+            
+            pq.push(parent);
+        }
+        
+        if (!pq.empty()) {
+            root = pq.top();
+        }
+        
+        // 生成编码表
+        generateCodes(root, "");
+    }
+    
+    string encode(const string& text) {
+        string result;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text[i];
+            char lowerC = tolower(c);
+            if (codeTable.find(lowerC) != codeTable.end()) {
+                result += codeTable[lowerC];
+            }
+        }
+        return result;
+    }
+    
+    string decode(const string& code) {
+        string result;
+        BinNode* current = root;
+        
+        for (int i = 0; i < code.length(); i++) {
+            char bit = code[i];
+            if (bit == '0') {
+                current = current->left;
+            } else {
+                current = current->right;
+            }
+            
+            if (!current->left && !current->right) {
+                result += current->data;
+                current = root;
+            }
+        }
+        
+        return result;
+    }
+    
+    void printCodeTable() {
+        cout << "Huffman编码表:" << endl;
+        cout << "================" << endl;
+        for (map<char, string>::iterator it = codeTable.begin(); it != codeTable.end(); ++it) {
+            cout << "'" << it->first << "': " << it->second << endl;
+        }
+        cout << "================" << endl;
+    }
+};
 
-// 统计《I have a dream》中26个字母的频率（不分大小写）
-void countFrequencies(int freq[]) {
-    memset(freq, 0, 26 * sizeof(int));
-    // 《I have a dream》核心文本（含重复出现的字母）
-    const char* text = "I have a dream that one day this nation will rise up and live out the true meaning of its creed We hold these truths to be self evident that all men are created equal";
-    for (int i = 0; text[i] != '\0'; i++) {
-        char c = tolower(text[i]);
-        if (c >= 'a' && c <= 'z') {
-            freq[c - 'a']++;
+// 分析文本频率
+map<char, int> analyzeText(const string& text) {
+    map<char, int> freqMap;
+    
+    // 初始化26个字母
+    for (char c = 'a'; c <= 'z'; c++) {
+        freqMap[c] = 0;
+    }
+    
+    // 统计频率
+    for (int i = 0; i < text.length(); i++) {
+        char c = text[i];
+        if (isalpha(c)) {
+            freqMap[tolower(c)]++;
         }
     }
+    
+    return freqMap;
 }
 
-// 对单词进行Huffman编码
-char* encodeWord(const char* word) {
-    if (word == NULL || word[0] == '\0') return NULL;
-    // 计算总编码长度
-    int totalLen = 0;
-    for (int i = 0; word[i] != '\0'; i++) {
-        char c = tolower(word[i]);
-        if (c < 'a' || c > 'z') return NULL; // 只处理字母
-        totalLen += huffCodes[c - 'a'].getLength();
-    }
-    // 拼接所有字符的编码
-    char* result = new char[totalLen + 1];
-    result[totalLen] = '\0';
-    int pos = 0;
-    for (int i = 0; word[i] != '\0'; i++) {
-        char c = tolower(word[i]);
-        char* codeStr = huffCodes[c - 'a'].toString();
-        strcpy(result + pos, codeStr);
-        pos += strlen(codeStr);
-        delete[] codeStr;
-    }
-    return result;
+// 马丁路德金演讲原文（简化版）
+string getSpeechText() {
+    return "I have a dream that one day this nation will rise up and live out the true meaning of its creed we hold these truths to be self evident that all men are created equal "
+           "I have a dream that one day on the red hills of Georgia the sons of former slaves and the sons of former slave owners will be able to sit down together at the table of brotherhood "
+           "I have a dream that one day even the state of Mississippi a state sweltering with the heat of injustice sweltering with the heat of oppression will be transformed into an oasis of freedom and justice "
+           "I have a dream that my four little children will one day live in a nation where they will not be judged by the color of their skin but by the content of their character "
+           "I have a dream today I have a dream that one day down in Alabama with its vicious racists with its governor having his lips dripping with the words of interposition and nullification "
+           "one day right down in Alabama little black boys and black girls will be able to join hands with little white boys and white girls as sisters and brothers "
+           "I have a dream today I have a dream that one day every valley shall be exalted every hill and mountain shall be made low the rough places will be made plain and the crooked places will be made straight "
+           "and the glory of the Lord shall be revealed and all flesh shall see it together this is our hope this is the faith that I go back to the South with "
+           "with this faith we will be able to hew out of the mountain of despair a stone of hope with this faith we will be able to transform the jangling discords of our nation into a beautiful symphony of brotherhood "
+           "with this faith we will be able to work together to pray together to struggle together to go to jail together to stand up for freedom together knowing that we will be free one day "
+           "this will be the day when all of Gods children will be able to sing with new meaning my country tis of thee sweet land of liberty of thee I sing "
+           "land where my fathers died land of the pilgrims pride from every mountainside let freedom ring";
 }
-
-// 声明释放函数（避免编译警告）
-void releaseHuffTree(HuffNode*);
 
 int main() {
-    int freq[26];
-    // 1. 统计字母频率
-    countFrequencies(freq);
-    cout << "26个字母在《I have a dream》中的出现频率：" << endl;
-    for (int i = 0; i < 26; i++) {
-        if (freq[i] > 0) {
-            cout << (char)('a' + i) << ": " << freq[i] << "次" << endl;
+    cout << "=== Huffman编码系统 ===" << endl;
+    cout << "基于马丁路德金《I have a dream》演讲构建Huffman树" << endl;
+    cout << "=========================================" << endl;
+    
+    // 获取演讲文本
+    string speechText = getSpeechText();
+    cout << "演讲文本长度: " << speechText.length() << " 字符" << endl;
+    
+    // 分析字母频率
+    map<char, int> freqMap = analyzeText(speechText);
+    
+    cout << "\n字母频率统计:" << endl;
+    cout << "================" << endl;
+    int totalChars = 0;
+    for (char c = 'a'; c <= 'z'; c++) {
+        if (freqMap[c] > 0) {
+            cout << c << ": " << freqMap[c] << "\t";
+            totalChars += freqMap[c];
+            if ((c - 'a') % 5 == 4) cout << endl;
         }
     }
+    cout << "总字母数: " << totalChars << endl;
+    cout << "================" << endl;
+    
+    // 构建Huffman树
+    HuffmanTree huffmanTree;
+    huffmanTree.build(freqMap);
+    
+    // 显示编码表
     cout << endl;
-
-    // 2. 构建Huffman树
-    HuffNode* huffRoot = buildHuffTree(freq);
-    if (huffRoot == NULL) {
-        cout << "构建Huffman树失败！" << endl;
-        return 1;
-    }
-
-    // 3. 构建Huffman编码
-    HuffCode emptyCode;
-    buildHuffCodes(huffRoot, emptyCode);
-    cout << "各字母的Huffman编码：" << endl;
-    for (int i = 0; i < 26; i++) {
-        if (freq[i] > 0) {
-            cout << (char)('a' + i) << ": " << huffCodes[i].toString() << endl;
+    huffmanTree.printCodeTable();
+    
+    // 测试编码解码
+    string testWords[] = {"dream", "freedom", "hope", "justice", "brotherhood", "america"};
+    int wordCount = 6;
+    
+    cout << "\n单词编码测试:" << endl;
+    cout << "================" << endl;
+    for (int i = 0; i < wordCount; i++) {
+        string word = testWords[i];
+        string encoded = huffmanTree.encode(word);
+        string decoded = huffmanTree.decode(encoded);
+        
+        cout << "单词: " << word << endl;
+        cout << "编码: " << encoded << endl;
+        cout << "解码: " << decoded << endl;
+        cout << "编码长度: " << encoded.length() << " 位" << endl;
+        if (encoded.length() > 0) {
+            cout << "压缩比: " << (word.length() * 8.0 / encoded.length()) << ":1" << endl;
         }
+        cout << "---" << endl;
     }
-    cout << endl;
-
-    // 4. 对指定单词进行编码（包含dream及自选单词）
-    const char* testWords[] = {"dream", "nation", "equal", "freedom", "hope", NULL};
-    cout << "单词编码结果：" << endl;
-    for (int i = 0; testWords[i] != NULL; i++) {
-        char* code = encodeWord(testWords[i]);
-        cout << testWords[i] << ": " << (code ? code : "包含非字母字符") << endl;
-        delete[] code;
+    
+    // 测试HuffCode类
+    cout << "\n测试HuffCode类:" << endl;
+    cout << "================" << endl;
+    HuffCode huffCode;
+    string testWord = "test";
+    string testEncoded = huffmanTree.encode(testWord);
+    
+    cout << "测试单词: " << testWord << endl;
+    cout << "Huffman编码: " << testEncoded << endl;
+    
+    // 使用HuffCode类存储编码
+    for (int i = 0; i < testEncoded.length(); i++) {
+        huffCode.append(testEncoded[i] == '1');
     }
-
-    // 释放Huffman树内存
-    releaseHuffTree(huffRoot);
+    
+    cout << "HuffCode内容: " << huffCode.toString() << endl;
+    cout << "HuffCode长度: " << huffCode.size() << " 位" << endl;
+    
+    cout << "\n=== 程序运行完成 ===" << endl;
+    
+    // 等待用户输入
+    cout << "按Enter键退出...";
+    cin.get();
+    
     return 0;
-}
-
-// 递归释放Huffman树内存
-void releaseHuffTree(HuffNode* root) {
-    if (root == NULL) return;
-    releaseHuffTree((HuffNode*)root->left);
-    releaseHuffTree((HuffNode*)root->right);
-    delete root;
 }
